@@ -1,83 +1,96 @@
 const express = require('express')
 const path = require('path')
-const {open} = require('sqlite')
-const sqlite3 = require('sqlite3')
-
 const app = express()
-app.use(express.json())
 
-const dbPath = path.join(__dirname, 'cricketTeam.db')
 let db = null
+let {open} = require('sqlite')
+let sqlite3 = require('sqlite3')
+const dbPath = path.join(__dirname, 'moviesData.db')
 
-const initializeAndOpenServer = async () => {
+let initializeAndOpenServer = async () => {
   try {
     db = await open({
       filename: dbPath,
       driver: sqlite3.Database,
     })
-
     app.listen(3000, () => {
-      console.log('Server is running at http://localhost:3000/players/')
+      console.log('Server is running at port 3000')
     })
   } catch (e) {
-    console.log(`DBerror: ${e.message}`)
-    process.exit(1)
+    console.log(e.message())
   }
 }
 
 initializeAndOpenServer()
 
-const convertDbObjectToResponseObject = dbObject => {
+app.use(express.json())
+const convertDbobjectToResponseobject = obj => {
   return {
-    playerId: dbObject.player_id,
-    playerName: dbObject.player_name,
-    jerseyNumber: dbObject.jersey_number,
-    role: dbObject.role,
+    movieId: obj.movie_id,
+    directorId: obj.director_id,
+    movieName: obj.movie_name,
+    leadActor: obj.lead_actor,
   }
 }
 
-app.get('/players/', async (request, response) => {
-  const query = `
- SELECT * from cricket_team order by player_id;
- 
- `
-  const queryOut = await db.all(query)
-  response.send(
-    queryOut.map(eachPlayer => convertDbObjectToResponseObject(eachPlayer)),
-  )
+app.get('/movies/', async (request, response) => {
+  let query = `select movie_name from movie;`
+  let queryOut = await db.all(query)
+  response.send(queryOut.map(eachMovie => ({movieName: eachMovie.movie_name})))
 })
 
-app.post('/players/', async (request, response) => {
-  let requestedData = request.body
-  let {playerName, jerseyNumber, role} = requestedData
-  const query = `INSERT INTO cricket_team (player_name,jersey_number,role) VALUES ('${playerName}' , ${jerseyNumber},'${role}')`
-  const dbResponse = await db.run(query)
-  response.send('Player Added to Team')
+app.post('/movies/', async (request, response) => {
+  const requestedData = request.body
+  const {directorId, movieName, leadActor} = requestedData
+  let query1 = `INSERT INTO movie (director_id,movie_name,lead_actor) VALUES (${directorId},'${movieName}','${leadActor}');`
+  let queryOut1 = await db.run(query1)
+  response.send('Movie Successfully Added')
 })
 
-app.get('/players/:playerId/', async (request, response) => {
-  let {playerId} = request.params
-  let requestedData = request.body
-  const query = `SELECT * FROM CRICKET_TEAM WHERE player_id = ${playerId}`
-  const dbResponse = await db.get(query)
-  response.send(convertDbObjectToResponseObject(dbResponse))
+app.get('/movies/:movieId/', async (request, response) => {
+  const {movieId} = request.params
+  // const parsedMovieId = parseInt(movieId)
+  // console.log(movieId)
+  let query2 = `SELECT movie_id,director_id,movie_name,lead_actor from movie where movie_id = ${movieId};`
+  let queryOut2 = await db.get(query2)
+  //response.send(queryOut2)
+  response.send(convertDbobjectToResponseobject(queryOut2))
 })
 
-app.put('/players/:playerId/', async (request, response) => {
-  let {playerId} = request.params
-  let requestedData = request.body
-  let {playerName, jerseyNumber, role} = requestedData
-  //console.log({playerName, jerseyNumber, role})
-  const query = `UPDATE cricket_team SET player_name = '${playerName}',jersey_number = ${jerseyNumber},role='${role}' WHERE player_id = ${playerId};`
-  const dbResponse = await db.run(query)
-  response.send('Player Details Updated')
+app.put('/movies/:movieId/', async (request, response) => {
+  const {movieId} = request.params
+  const requestedData = request.body
+  const {directorId, movieName, leadActor} = requestedData
+  const query3 = `UPDATE movie SET director_id = ${directorId},movie_name = '${movieName}',lead_actor = '${leadActor}' where movie_id = ${movieId};`
+  const queryOut3 = await db.run(query3)
+  response.send('Movie Details Updated')
 })
 
-app.delete('/players/:playerId/', async (request, response) => {
-  let {playerId} = request.params
-  const query = `DELETE FROM CRICKET_TEAM WHERE player_id = ${playerId};`
-  const dbResponse = await db.run(query)
-  response.send('Player Removed')
+app.delete('/movies/:movieId/', async (request, response) => {
+  const {movieId} = request.params
+  const query4 = `DELETE from movie where movie_id = ${movieId};`
+  await db.run(query4)
+  response.send('Movie Removed')
+})
+
+app.get('/directors/', async (request, response) => {
+  const query5 = `SELECT director_id,director_name from director;`
+  const queryOut5 = await db.all(query5)
+  const formattedOutput = queryOut5.map(director => ({
+    directorId: director.director_id,
+    directorName: director.director_name,
+  }))
+  response.send(formattedOutput)
+})
+
+app.get('/directors/:directorId/movies/', async (request, response) => {
+  const {directorId} = request.params
+  const query6 = `SELECT movie.movie_name from movie inner join director on movie.director_id = director.director_id where director.director_id = ${directorId};`
+  const queryOut6 = await db.all(query6)
+  let formattedOutput1 = queryOut6.map(item => ({
+    movieName: item.movie_name,
+  }))
+  response.send(formattedOutput1)
 })
 
 module.exports = app
