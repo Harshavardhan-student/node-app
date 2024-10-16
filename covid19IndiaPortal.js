@@ -71,3 +71,4 @@ app.post('/login', async (request, response) => {
     response.send('Invalid user')
   }
 })
+module.exports=  app
