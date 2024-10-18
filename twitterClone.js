@@ -36,26 +36,23 @@ let convertDbObjToTweetOb = item => {
 
 let authenticateUser = (request, response, next) => {
   let authHeader = request.headers['authorization']
-  let jwtToken = authHeader.split(' ')[1]
-  if (authHeader === undefined) {
+  if (authHeader !== undefined) {
+    jwtToken = authHeader.split(' ')[1]
+  } else {
     response.status(401)
     response.send('Invalid JWT Token')
     return
   }
-  if (jwtToken !== undefined) {
-    jwt.verify(jwtToken, 'MY_TOKEN', (error, payload) => {
-      if (error) {
-        response.status(401)
-        response.send('Invalid JWT Token')
-      } else {
-        request.username = payload.username
-        next()
-      }
-    })
-  } else {
-    response.status(401)
-    response.send('Invalid JWT Token')
-  }
+
+  jwt.verify(jwtToken, 'mySecretCode', (error, payload) => {
+    if (error) {
+      response.status(401)
+      response.send('Invalid JWT Token')
+    } else {
+      request.username = payload.username
+      next()
+    }
+  })
 }
 
 app.post('/register/', async (request, response) => {
@@ -89,7 +86,7 @@ app.post('/login/', async (request, response) => {
       let payload = {
         username: username,
       }
-      let jwtToken = jwt.sign(payload, 'MY_TOKEN')
+      let jwtToken = jwt.sign(payload, 'mySecretCode')
       response.status(200)
       response.send({jwtToken})
     } else {
@@ -107,6 +104,7 @@ app.get('/user/tweets/feed/', authenticateUser, async (request, response) => {
 FROM user
 INNER JOIN follower ON user.user_id = follower.following_user_id
 INNER JOIN tweet ON tweet.user_id = follower.following_user_id
+WHERE follower.follower_user_id = (SELECT user_id FROM user WHERE username = '${request.username}')
 ORDER BY tweet.date_time DESC
 LIMIT 4;
 ;`
@@ -140,15 +138,69 @@ LEFT JOIN like ON tweet.tweet_id = like.tweet_id
 LEFT JOIN reply ON tweet.tweet_id = reply.tweet_id
 WHERE follower.follower_user_id = (SELECT user_id FROM user WHERE username = '${request.username}')
   AND tweet.tweet_id = ${tweetId}
-ORDER BY tweet.date_time DESC;
+GROUP BY tweet.tweet;
 `
   let queryOut = await db.get(query)
-  if (queryOut.tweet !== null) {
-    response.send(queryOut)
+  /* response.send(queryOut)
+  if (queryOut) {
+    console.log('hi')
+  }*/
+  if (queryOut) {
+    response.send({queryOut})
   } else {
     response.status(401)
     response.send('Invalid Request')
   }
 })
+
+app.get(
+  '/tweets/:tweetId/likes/',
+  authenticateUser,
+  async (request, response) => {
+    let array = []
+    let {tweetId} = request.params
+    let query = `SELECT user.username AS name from user inner join like on user.user_id = like.user_id inner join tweet on like.tweet_id = tweet.tweet_id inner join follower on tweet.user_id = follower.following_user_id where follower.follower_user_id =(SELECT user_id FROM user where username = '${request.username}')
+ AND tweet.tweet_id = ${tweetId};`
+    let queryOut = await db.all(query)
+    for (let i of queryOut) {
+      array.push(i.name)
+    }
+    if (array.length !== 0) {
+      response.send({
+        likes: array,
+      })
+    } else {
+      response.status(401)
+      response.send('Invalid Request')
+    }
+  },
+)
+
+app.get(
+  '/tweets/:tweetId/replies/',
+  authenticateUser,
+  async (request, response) => {
+    let {tweetId} = request.params
+    let query = `SELECT 
+  user.name AS name,
+  reply.reply AS reply
+FROM reply
+INNER JOIN user ON user.user_id = reply.user_id 
+INNER JOIN tweet ON reply.tweet_id = tweet.tweet_id
+INNER JOIN follower ON follower.following_user_id = tweet.user_id
+WHERE follower.follower_user_id = (SELECT user_id FROM user WHERE username = '${request.username}')
+  AND tweet.tweet_id = ${tweetId};
+`
+    let queryOut = await db.all(query)
+    if (queryOut.length > 0) {
+      response.send({
+        replies: queryOut,
+      })
+    } else {
+      response.status(401)
+      response.send('Invalid Request')
+    }
+  },
+)
 
 module.exports = app
