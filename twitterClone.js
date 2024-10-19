@@ -146,7 +146,12 @@ GROUP BY tweet.tweet;
     console.log('hi')
   }*/
   if (queryOut) {
-    response.send({queryOut})
+    response.send({
+      tweet: queryOut.tweet,
+      likes: queryOut.likes,
+      replies: queryOut.replies,
+      dateTime: queryOut.dateTime,
+    })
   } else {
     response.status(401)
     response.send('Invalid Request')
@@ -202,5 +207,40 @@ WHERE follower.follower_user_id = (SELECT user_id FROM user WHERE username = '${
     }
   },
 )
+
+app.get('/user/tweets/', authenticateUser, async (request, response) => {
+  let query = `
+SELECT tweet.tweet AS tweet,COUNT(DISTINCT like.like_id) AS likes,COUNT(DISTINCT reply.reply_id) AS replies,tweet.date_time AS dataTime from tweet LEFT join like on tweet.tweet_id = like.tweet_id LEFT join reply on reply.tweet_id = tweet.tweet_id 
+where tweet.user_id = (SELECT user_id from user where username = '${request.username}')
+GROUP BY tweet.tweet, tweet.date_time;
+`
+  let queryOut = await db.all(query)
+  let returnArr = queryOut.map(it => ({
+    tweet: it.tweet,
+    likes: it.likes,
+    replies: it.replies,
+    dateTime: it.dateTime,
+  }))
+  response.send(returnArr)
+})
+
+app.post('/user/tweets/', authenticateUser, async (request, response) => {
+  let {tweet} = request.body
+  let query = `INSERT INTO tweet (tweet) VALUES ('${tweet}');`
+  await db.run(query)
+  response.send('Created a Tweet')
+})
+
+app.delete('/tweets/:tweetId/', authenticateUser, async (request, response) => {
+  let {tweetId} = request.params
+  let query = `DELETE FROM tweet where tweet_id = ${tweetId} AND user_id = (SELECT user_id from user where username = '${request.username}');`
+  let queryOut = await db.run(query)
+  if (queryOut.changes > 0) {
+    response.send('Tweet Removed')
+  } else {
+    response.status(401)
+    response.send('Invalid Request')
+  }
+})
 
 module.exports = app
